@@ -7,13 +7,12 @@ import requests
 import logging
 import hashlib
 
-def login_api(username,password,mclient,url):
+def login_api(username,password,mclient,url,ttl):
         mc = memcache.Client([mclient])
         session_key = mc.get("sessionkey")
 
         if session_key:
             logging.info("Found session key in memcache")
-            return session_key
         else:
             encpass = md5pass(password)
             logging.info("No session key in memcache, fetching a new one")
@@ -28,9 +27,11 @@ def login_api(username,password,mclient,url):
                 logging.error("session key request failed")
                 response_data.raise_for_status()
                 raise http_error
-            string = response_data.text
-            print "Response " + string
-            
+            logging.debug("Response data:" + response_data.text)
+            data = json.loads(response_data.text)
+            session_key = data['id']
+            logging.debug("Adding session key " + str(session_key) + " to memcache with ttl " + str(ttl))
+            mc.set("sessionkey", session_key, ttl)
         return session_key
 
 
@@ -44,16 +45,18 @@ def md5pass(password):
 #Get Global config attributes
 
 try:
-	config = json.loads(open('./config.json').read())
-	so_url = config["signon_url"]
-	username = config["username"]
-	password = config["password"]
-	mc = config["memcache_client"]
-	logfile = config["logfile"]
-	logging.basicConfig(filename=logfile,level=logging.DEBUG)
+    config = json.loads(open('./config.json').read())
+    so_url = config["signon_url"]
+    username = config["username"]
+    password = config["password"]
+    session_ttl = config["session_ttl"]
+    mc = config["memcache_client"]
+    logfile = config["logfile"]
+    logging.basicConfig(filename=logfile,level=logging.DEBUG)
 except:
 	print "Config load failed. Script expects a JSON config file called config.json in local Directory"
 	raise
 	
 
-session_key = login_api(username,password,mc,so_url)
+session_key = login_api(username,password,mc,so_url,session_ttl)
+print "Session Key is " + session_key
